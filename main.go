@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"os/signal"
@@ -43,6 +44,7 @@ func main() {
 		TCP        bool
 		Plugin     string
 		PluginOpts string
+		SRV        bool
 	}
 
 	flag.BoolVar(&config.Verbose, "verbose", false, "verbose mode")
@@ -63,6 +65,7 @@ func main() {
 	flag.BoolVar(&flags.UDP, "udp", false, "(server-only) enable UDP support")
 	flag.BoolVar(&flags.TCP, "tcp", true, "(server-only) enable TCP support")
 	flag.BoolVar(&config.TCPCork, "tcpcork", false, "coalesce writing first few packets")
+	flag.BoolVar(&flags.SRV, "srv", false, "enable DNS SRV lookups for client mode")
 	flag.DurationVar(&config.UDPTimeout, "udptimeout", 5*time.Minute, "UDP tunnel timeout")
 	flag.Parse()
 
@@ -101,6 +104,14 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+		}
+
+		if flags.SRV {
+			addr, err = resolveSRV(addr)
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Println("SRV resolved address:", addr)
 		}
 
 		udpAddr := addr
@@ -204,4 +215,12 @@ func parseURL(s string) (addr, cipher, password string, err error) {
 		password, _ = u.User.Password()
 	}
 	return
+}
+
+func resolveSRV(addr string) (string, error) {
+	_, addrs, err := net.LookupSRV("", "", addr)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s:%d", addrs[0].Target[:len(addrs[0].Target)-1], addrs[0].Port), nil
 }
